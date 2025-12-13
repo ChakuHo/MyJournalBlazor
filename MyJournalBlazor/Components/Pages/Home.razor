@@ -1,5 +1,115 @@
 ﻿@page "/"
+@using MyJournalBlazor.Models
+@using MyJournalBlazor.Services
+@inject DatabaseService DbService
 
-<h1>Hello, world!</h1>
+<h1>My Daily Journal</h1>
 
-Welcome to your new app.
+<div class="container">
+    <!-- INPUT SECTION -->
+    <div class="card p-3 mb-4">
+        <h4>New Entry</h4>
+        
+        <div class="mb-2">
+            <label>Date:</label>
+            <input type="date" class="form-control" @bind="currentEntry.Date" />
+        </div>
+
+        <div class="mb-2">
+            <label>Mood:</label>
+            <select class="form-control" @bind="currentEntry.Mood">
+                <option>Positive</option>
+                <option>Neutral</option>
+                <option>Negative</option>
+            </select>
+        </div>
+
+        <div class="mb-2">
+            <label>Title:</label>
+            <input type="text" class="form-control" placeholder="Title..." @bind="currentEntry.Title" />
+        </div>
+
+        <div class="mb-2">
+            <label>Content:</label>
+            <textarea class="form-control" rows="4" placeholder="Write here..." @bind="currentEntry.Content"></textarea>
+        </div>
+
+        <button class="btn btn-primary" @onclick="SaveEntry">Save Journal</button>
+    </div>
+
+    <!-- LIST SECTION -->
+    <h4>Past Entries</h4>
+    
+    @if (entries == null)
+    {
+        <p>Loading...</p>
+    }
+    else if (entries.Count == 0)
+    {
+        <p>No entries yet. Write something!</p>
+    }
+    else
+    {
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Mood</th>
+                    <th>Title</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in entries)
+                {
+                    <tr>
+                        <td>@item.Date.ToShortDateString()</td>
+                        <td>@item.Mood</td>
+                        <td>@item.Title</td>
+                        <td>
+                             <button class="btn btn-danger btn-sm" @onclick="() => DeleteEntry(item)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    // 1. Variables
+    private JournalEntry currentEntry = new JournalEntry();
+    private List<JournalEntry> entries = new List<JournalEntry>();
+
+    // 2. This runs when the app starts
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEntries();
+    }
+
+    // 3. Load data from DB
+    private async Task LoadEntries()
+    {
+        entries = await DbService.GetEntriesAsync();
+    }
+
+    // 4. Save Button Logic
+    private async Task SaveEntry()
+    {
+        currentEntry.CreatedAt = DateTime.Now;
+        await DbService.SaveEntryAsync(currentEntry);
+        
+        // Reset the form
+        currentEntry = new JournalEntry();
+        
+        // Refresh the list
+        await LoadEntries();
+    }
+    
+    // 5. Delete Logic
+    private async Task DeleteEntry(JournalEntry item)
+    {
+        await DbService.DeleteEntryAsync(item);
+        await LoadEntries();
+    }
+}
