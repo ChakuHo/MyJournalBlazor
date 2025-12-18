@@ -43,18 +43,27 @@
 
     private async Task SaveEntry()
     {
+        // 1. VALIDATION CHECK
         if (string.IsNullOrWhiteSpace(currentEntry.Title))
         {
-            await App.Current.MainPage.DisplayAlert("Error", "Please write a title!", "OK");
+            await App.Current.MainPage.DisplayAlert("Validation Error", "Please write a Title for your entry.", "OK");
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(currentEntry.Content))
+        {
+            await App.Current.MainPage.DisplayAlert("Validation Error", "You cannot save an empty journal! Write something.", "OK");
+            return;
+        }
+
+        // 2. SAVE
         currentEntry.CreatedAt = DateTime.Now;
         await DbService.SaveEntryAsync(currentEntry);
 
-        // Reset form
+        // 3. RESET FORM
         currentEntry = new JournalEntry();
 
-        await App.Current.MainPage.DisplayAlert("Success", "Entry Saved Successfully!", "OK");
+        // 4. SUCCESS MESSAGE
+        await App.Current.MainPage.DisplayAlert("Success", "Journal Saved Successfully!", "OK");
     }
 }

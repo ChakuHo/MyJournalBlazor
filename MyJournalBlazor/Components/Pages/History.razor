@@ -8,7 +8,7 @@
 
     <!-- Search Bar -->
     <div class="input-group mb-4 shadow-sm">
-        <span class="input-group-text">🔍</span>
+        <span class="input-group-text">Search</span>
         <input type="text" class="form-control" placeholder="Search entries..."
                @bind="searchText" @bind:event="oninput" @onkeyup="FilterEntries" />
     </div>
@@ -30,7 +30,7 @@
                         <th>Date</th>
                         <th>Mood</th>
                         <th>Title</th>
-                        <th>Action</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -39,12 +39,19 @@
                         <tr>
                             <td>@item.Date.ToShortDateString()</td>
                             <td>
-                                <!-- Simple Badge Logic -->
                                 <span class="badge @GetMoodColor(item.Mood)">@item.Mood</span>
                             </td>
                             <td>@item.Title</td>
                             <td>
-                                <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(item)">🗑️</button>
+                                <!-- VIEW BUTTON -->
+                                <button class="btn btn-outline-primary btn-sm me-2" @onclick="() => ViewEntry(item)">
+                                    View
+                                </button>
+
+                                <!-- DELETE BUTTON -->
+                                <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(item)">
+                                    Delete
+                                </button>
                             </td>
                         </tr>
                     }
@@ -70,6 +77,11 @@
         filteredEntries = allEntries;
     }
 
+    private async Task ViewEntry(JournalEntry item)
+    {
+        await App.Current.MainPage.DisplayAlert(item.Title, item.Content, "Close");
+    }
+
     private async Task DeleteEntry(JournalEntry item)
     {
         bool confirm = await App.Current.MainPage.DisplayAlert("Delete", "Delete this entry?", "Yes", "No");
@@ -92,9 +104,9 @@
     {
         return mood switch
         {
-            "Positive" => "bg-success", // Green
-            "Negative" => "bg-danger",  // Red
-            _ => "bg-secondary"         // Grey (Neutral)
+            "Positive" => "bg-success",
+            "Negative" => "bg-danger",
+            _ => "bg-secondary"
         };
     }
 }
