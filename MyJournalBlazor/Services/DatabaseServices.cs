@@ -28,6 +28,7 @@ namespace MyJournalBlazor.Services
         public async Task<List<JournalEntry>> GetEntriesAsync()
         {
             await Init();
+            // Sort by Date (Newest first)
             return await _db.Table<JournalEntry>().OrderByDescending(x => x.Date).ToListAsync();
         }
 

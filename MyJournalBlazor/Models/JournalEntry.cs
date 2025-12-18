@@ -7,9 +7,10 @@ namespace MyJournalBlazor.Models
     {
         [PrimaryKey, AutoIncrement]
         public int Id { get; set; }
+
         public string Title { get; set; }
         public string Content { get; set; }
-        public DateTime Date { get; set; } = DateTime.Now; // Default to today
+        public DateTime Date { get; set; } = DateTime.Now;
         public string Mood { get; set; } = "Neutral";
         public DateTime CreatedAt { get; set; }
     }

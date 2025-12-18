@@ -1,0 +1,100 @@
+﻿@page "/history"
+@using MyJournalBlazor.Models
+@using MyJournalBlazor.Services
+@inject DatabaseService DbService
+
+<div class="fade-in">
+    <h1 class="mb-4">History</h1>
+
+    <!-- Search Bar -->
+    <div class="input-group mb-4 shadow-sm">
+        <span class="input-group-text">🔍</span>
+        <input type="text" class="form-control" placeholder="Search entries..."
+               @bind="searchText" @bind:event="oninput" @onkeyup="FilterEntries" />
+    </div>
+
+    @if (filteredEntries == null)
+    {
+        <p>Loading...</p>
+    }
+    else if (filteredEntries.Count == 0)
+    {
+        <div class="alert alert-info">No entries found. Go write one!</div>
+    }
+    else
+    {
+        <div class="journal-card">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Mood</th>
+                        <th>Title</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in filteredEntries)
+                    {
+                        <tr>
+                            <td>@item.Date.ToShortDateString()</td>
+                            <td>
+                                <!-- Simple Badge Logic -->
+                                <span class="badge @GetMoodColor(item.Mood)">@item.Mood</span>
+                            </td>
+                            <td>@item.Title</td>
+                            <td>
+                                <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(item)">🗑️</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private List<JournalEntry> allEntries = new List<JournalEntry>();
+    private List<JournalEntry> filteredEntries = new List<JournalEntry>();
+    private string searchText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadEntries();
+    }
+
+    private async Task LoadEntries()
+    {
+        allEntries = await DbService.GetEntriesAsync();
+        filteredEntries = allEntries;
+    }
+
+    private async Task DeleteEntry(JournalEntry item)
+    {
+        bool confirm = await App.Current.MainPage.DisplayAlert("Delete", "Delete this entry?", "Yes", "No");
+        if (confirm)
+        {
+            await DbService.DeleteEntryAsync(item);
+            await LoadEntries();
+        }
+    }
+
+    private void FilterEntries()
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+            filteredEntries = allEntries;
+        else
+            filteredEntries = allEntries.Where(x => x.Title.ToLower().Contains(searchText.ToLower())).ToList();
+    }
+
+    private string GetMoodColor(string mood)
+    {
+        return mood switch
+        {
+            "Positive" => "bg-success", // Green
+            "Negative" => "bg-danger",  // Red
+            _ => "bg-secondary"         // Grey (Neutral)
+        };
+    }
+}
