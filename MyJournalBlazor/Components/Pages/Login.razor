@@ -1,0 +1,116 @@
+@page "/"
+@using MyJournalBlazor.Services
+@using MudBlazor
+@inject UserService UserService
+@inject NavigationManager NavManager
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="d-flex align-center justify-center" Style="height: 80vh;">
+    <MudPaper Elevation="4" Class="pa-8" Width="100%" Style="max-width: 450px;">
+
+        <div class="d-flex justify-center mb-4">
+            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Large" Color="Color.Primary" />
+        </div>
+
+        <MudText Typo="Typo.h4" Align="Align.Center" Class="mb-6">
+            @(isRegistering ? "Setup Account" : (isForgotPin ? "Recover PIN" : "Secure Journal"))
+        </MudText>
+
+        @if (isRegistering)
+        {
+            <MudTextField @bind-Value="regName" Label="Full Name" Variant="Variant.Outlined" Class="mb-3" />
+            <MudTextField @bind-Value="regPhone" Label="Phone Number" Variant="Variant.Outlined" Class="mb-3" />
+            <MudTextField @bind-Value="regPin" Label="Create PIN (4 Digits)" InputType="InputType.Password" MaxLength="4" Variant="Variant.Outlined" Class="mb-3" />
+
+            <MudSelect @bind-Value="regSecQ" Label="Security Question" Variant="Variant.Outlined" Class="mb-3" AnchorOrigin="Origin.BottomCenter">
+                <MudSelectItem Value="@("What is your mother last name?")" />
+                <MudSelectItem Value="@("What is your lucky number?")" />
+                <MudSelectItem Value="@("Which pet did you loved the most?")" />
+            </MudSelect>
+
+            <MudTextField @bind-Value="regSecA" Label="Answer" Variant="Variant.Outlined" Class="mb-4" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="Register">Complete Setup</MudButton>
+        }
+        else if (isForgotPin)
+        {
+            <MudText Class="mb-2"><b>Question:</b> @UserService.GetSecurityQuestion()</MudText>
+            <MudTextField @bind-Value="recoverAnswer" Label="Answer" Variant="Variant.Outlined" Class="mb-3" />
+            <MudTextField @bind-Value="newPin" Label="New PIN" InputType="InputType.Password" MaxLength="4" Variant="Variant.Outlined" Class="mb-4" />
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" FullWidth="true" OnClick="ResetPin" Class="mb-2">Reset PIN</MudButton>
+            <MudButton Variant="Variant.Text" FullWidth="true" OnClick="() => isForgotPin = false">Cancel</MudButton>
+        }
+        else
+        {
+            <MudText Typo="Typo.h6" Align="Align.Center" Class="mb-4">Welcome back, <b>@UserService.UserName</b></MudText>
+            <MudTextField @bind-Value="loginPin" Label="Enter PIN" InputType="InputType.Password" MaxLength="4" Variant="Variant.Outlined" Class="mb-4" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="DoLogin" Class="mb-3">Login</MudButton>
+            <MudLink OnClick="() => isForgotPin = true" Underline="Underline.Always" Color="Color.Secondary" Class="d-flex justify-center">Forgot PIN?</MudLink>
+        }
+
+    </MudPaper>
+</MudContainer>
+
+@code {
+    bool isRegistering = false;
+    bool isForgotPin = false;
+    string regName, regPhone, regPin, regSecQ = "What is your mother last name?", regSecA;
+    string loginPin, recoverAnswer, newPin;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserService.IsRegistered) isRegistering = true;
+    }
+
+    private async Task Register()
+    {
+        if (string.IsNullOrWhiteSpace(regName) || regPin?.Length != 4) { Snackbar.Add("Check fields", Severity.Error); return; }
+        await UserService.RegisterUserAsync(regName, regPhone, regPin, regSecQ, regSecA);
+        Snackbar.Add("Setup Complete!", Severity.Success);
+        isRegistering = false;
+    }
+
+    private async Task DoLogin()
+    {
+        if (await UserService.VerifyPinAsync(loginPin)) NavManager.NavigateTo("/journal");
+        else { Snackbar.Add("Wrong PIN!", Severity.Error); loginPin = ""; }
+    }
+
+    private async Task ResetPin()
+    {
+        // 1. Basic Validation
+        if (string.IsNullOrWhiteSpace(newPin) || newPin.Length != 4 || !newPin.All(char.IsDigit))
+        {
+            Snackbar.Add("New PIN must be exactly 4 digits.", Severity.Warning);
+            return;
+        }
+
+        // 2. Security Question Check
+        bool isAnswerCorrect = await UserService.VerifySecurityAnswerAsync(recoverAnswer);
+
+        if (isAnswerCorrect)
+        {
+            // 3. CHECK: Is the new PIN the same as the old one?
+            bool isSameAsOld = await UserService.VerifyPinAsync(newPin);
+
+            if (isSameAsOld)
+            {
+                Snackbar.Add("New PIN cannot be the same as your old PIN!", Severity.Error);
+                return;
+            }
+
+            // 4. Reset it
+            await UserService.ResetPinAsync(newPin);
+            Snackbar.Add("PIN Reset Successfully! Please Login.", Severity.Success);
+
+            // 5. Clean up
+            isForgotPin = false;
+            loginPin = "";
+            newPin = "";
+            recoverAnswer = "";
+        }
+        else
+        {
+            Snackbar.Add("Wrong Security Answer.", Severity.Error);
+        }
+    }
+}

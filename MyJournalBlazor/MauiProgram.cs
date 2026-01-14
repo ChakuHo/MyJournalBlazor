@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using MudBlazor.Services;
 
 namespace MyJournalBlazor
 {
@@ -15,7 +16,9 @@ namespace MyJournalBlazor
                 });
 
             builder.Services.AddMauiBlazorWebView();
+            builder.Services.AddMudServices();
             builder.Services.AddSingleton<Services.DatabaseService>();// register database service
+            builder.Services.AddSingleton<Services.UserService>();
 
 #if DEBUG
             builder.Services.AddBlazorWebViewDeveloperTools();

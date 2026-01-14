@@ -1,17 +1,52 @@
 ﻿@inherits LayoutComponentBase
+@using MudBlazor
+@using Microsoft.Maui.Storage
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+<!-- THE MISSING PIECE WAS: MudPopoverProvider -->
+<MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
+<MudPopoverProvider />  <!-- <--- THIS WAS THE KILLER -->
+<MudDialogProvider />
+<MudSnackbarProvider />
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+<MudLayout>
+    <MudAppBar Elevation="1" Color="Color.Primary">
+        <MudIcon Icon="@Icons.Material.Filled.Book" Class="mr-3" />
+        <MudText Typo="Typo.h6">My Journal</MudText>
+        <MudSpacer />
 
-        <article class="content px-4">
+        <MudTooltip Text="Toggle Dark Mode">
+            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.Brightness7 : Icons.Material.Filled.Brightness4)"
+                           Color="Color.Inherit"
+                           OnClick="@ToggleTheme" />
+        </MudTooltip>
+    </MudAppBar>
+
+    <MudDrawer Open="true" ClipMode="DrawerClipMode.Always" Elevation="2">
+        <MudNavMenu>
+            <MudNavLink Href="journal" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Edit">Write Entry</MudNavLink>
+            <MudNavLink Href="history" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.History">History</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent Class="pt-4">
+        <MudContainer MaxWidth="MaxWidth.Medium">
             @Body
-        </article>
-    </main>
-</div>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _isDarkMode;
+    private MudTheme _theme = new MudTheme();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isDarkMode = Preferences.Get("IsDarkMode", false);
+    }
+
+    private void ToggleTheme()
+    {
+        _isDarkMode = !_isDarkMode;
+        Preferences.Set("IsDarkMode", _isDarkMode);
+    }
+}
