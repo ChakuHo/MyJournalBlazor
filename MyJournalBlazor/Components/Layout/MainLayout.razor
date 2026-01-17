@@ -1,52 +1,134 @@
 ﻿@inherits LayoutComponentBase
 @using MudBlazor
 @using Microsoft.Maui.Storage
-
-<!-- THE MISSING PIECE WAS: MudPopoverProvider -->
+@inject NavigationManager NavManager
+<!-- Global Providers -->
 <MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
-<MudPopoverProvider />  <!-- <--- THIS WAS THE KILLER -->
+<MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1" Color="Color.Primary">
-        <MudIcon Icon="@Icons.Material.Filled.Book" Class="mr-3" />
-        <MudText Typo="Typo.h6">My Journal</MudText>
-        <MudSpacer />
 
-        <MudTooltip Text="Toggle Dark Mode">
-            <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.Brightness7 : Icons.Material.Filled.Brightness4)"
-                           Color="Color.Inherit"
-                           OnClick="@ToggleTheme" />
-        </MudTooltip>
-    </MudAppBar>
+    <!-- Hide Header/Sidebar on Login Page -->
+    @if (!IsLoginPage)
+    {
+        <MudAppBar Elevation="1" Color="Color.Primary" Fixed="true">
+            <MudIcon Icon="@Icons.Material.Filled.Book" Class="mr-3" />
+            <MudText Typo="Typo.h6">My Journal</MudText>
+            <MudSpacer />
 
-    <MudDrawer Open="true" ClipMode="DrawerClipMode.Always" Elevation="2">
-        <MudNavMenu>
-            <MudNavLink Href="journal" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Edit">Write Entry</MudNavLink>
-            <MudNavLink Href="history" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.History">History</MudNavLink>
-        </MudNavMenu>
-    </MudDrawer>
+            <!-- Font Size Toggle -->
+            <MudTooltip Text="Change Text Size">
+                <MudIconButton Icon="@Icons.Material.Filled.FormatSize"
+                               Color="Color.Inherit"
+                               OnClick="@CycleFontSize" />
+            </MudTooltip>
 
-    <MudMainContent Class="pt-4">
-        <MudContainer MaxWidth="MaxWidth.Medium">
-            @Body
+            <!-- Theme Toggle -->
+            <MudTooltip Text="Toggle Theme">
+                <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.Brightness7 : Icons.Material.Filled.Brightness4)"
+                               Color="Color.Inherit"
+                               OnClick="@ToggleTheme" />
+            </MudTooltip>
+        </MudAppBar>
+
+        <MudDrawer Open="true" ClipMode="DrawerClipMode.Always" Elevation="2" Variant="DrawerVariant.Persistent">
+            <MudNavMenu>
+                <MudNavLink Href="journal" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Edit">Write Entry</MudNavLink>
+                <MudNavLink Href="history" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.History">History</MudNavLink>
+            </MudNavMenu>
+        </MudDrawer>
+    }
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="@(IsLoginPage ? "mt-4" : "pt-16 mt-4")">
+
+            <!-- Pass Data to Pages -->
+            <CascadingValue Value="@_isDarkMode" Name="IsDarkMode">
+                <CascadingValue Value="@GetFontSizeClass()" Name="FontSizeClass">
+                    @Body
+                </CascadingValue>
+            </CascadingValue>
+
         </MudContainer>
     </MudMainContent>
 </MudLayout>
 
 @code {
     private bool _isDarkMode;
-    private MudTheme _theme = new MudTheme();
+    private bool IsLoginPage = true;
+    private int _fontSize = 1; // 0=Small, 1=Medium, 2=Large
+
+    // THEME: "Royal Blue Tech"
+    private MudTheme _theme = new MudTheme()
+    {
+        PaletteLight = new PaletteLight()
+        {
+            Primary = "#1565C0",      // Vibrant Royal Blue
+            Secondary = "#0D47A1",
+            AppbarBackground = "#1565C0",
+            Background = "#F3F4F6",
+            TextPrimary = "#1F2937",
+        },
+        PaletteDark = new PaletteDark()
+        {
+            Primary = "#64B5F6",      // Light Blue
+            Secondary = "#2196F3",
+            AppbarBackground = "#0F172A",
+            Background = "#0B1120",
+            Surface = "#1E293B",
+            TextPrimary = "#E2E8F0",
+        }
+    };
 
     protected override async Task OnInitializedAsync()
     {
         _isDarkMode = Preferences.Get("IsDarkMode", false);
+        _fontSize = Preferences.Get("AppFontSize", 1);
+
+        NavManager.LocationChanged += OnLocationChanged;
+        CheckIfLoginPage();
+    }
+
+    private void OnLocationChanged(object sender, LocationChangedEventArgs e)
+    {
+        CheckIfLoginPage();
+        StateHasChanged();
+    }
+
+    private void CheckIfLoginPage()
+    {
+        var currentUrl = NavManager.Uri;
+        IsLoginPage = (currentUrl == NavManager.BaseUri);
     }
 
     private void ToggleTheme()
     {
         _isDarkMode = !_isDarkMode;
         Preferences.Set("IsDarkMode", _isDarkMode);
+    }
+
+    private void CycleFontSize()
+    {
+        _fontSize++;
+        if (_fontSize > 2) _fontSize = 0;
+        Preferences.Set("AppFontSize", _fontSize);
+    }
+
+    public string GetFontSizeClass()
+    {
+        return _fontSize switch
+        {
+            0 => "font-small",
+            1 => "font-medium",
+            2 => "font-large",
+            _ => "font-medium"
+        };
+    }
+
+    public void Dispose()
+    {
+        NavManager.LocationChanged -= OnLocationChanged;
     }
 }

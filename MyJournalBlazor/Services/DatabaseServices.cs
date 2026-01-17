@@ -3,7 +3,7 @@ using MyJournalBlazor.Models;
 
 namespace MyJournalBlazor.Services
 {
-    public class DatabaseService
+    public class DatabaseService: IDatabaseService
     {
         private SQLiteAsyncConnection _db;
 
@@ -19,16 +19,31 @@ namespace MyJournalBlazor.Services
         public async Task SaveEntryAsync(JournalEntry entry)
         {
             await Init();
-            if (entry.Id == 0)
-                await _db.InsertAsync(entry);
-            else
+
+            // Checking if we already have an ID (Update) or if it's new (Insert)
+            if (entry.Id != 0)
+            {
                 await _db.UpdateAsync(entry);
+            }
+            else
+            {
+                // Checking if an entry for this DATE already exists to prevent duplicates
+                var existing = await GetEntryByDateAsync(entry.Date);
+                if (existing != null)
+                {
+                    entry.Id = existing.Id; // Take the old ID
+                    await _db.UpdateAsync(entry); // Update instead of Insert
+                }
+                else
+                {
+                    await _db.InsertAsync(entry);
+                }
+            }
         }
 
         public async Task<List<JournalEntry>> GetEntriesAsync()
         {
             await Init();
-            // Sort by Date (Newest first)
             return await _db.Table<JournalEntry>().OrderByDescending(x => x.Date).ToListAsync();
         }
 
@@ -36,6 +51,20 @@ namespace MyJournalBlazor.Services
         {
             await Init();
             await _db.DeleteAsync(entry);
+        }
+
+  
+        public async Task<JournalEntry> GetEntryByDateAsync(DateTime date)
+        {
+            await Init();
+            // Calculate the start and end of the selected day
+            var startOfDay = date.Date;
+            var endOfDay = date.Date.AddDays(1).AddTicks(-1);
+
+            // Finding those entries that falls between 00:00:00 and 23:59:59 of that day
+            return await _db.Table<JournalEntry>()
+                            .Where(e => e.Date >= startOfDay && e.Date <= endOfDay)
+                            .FirstOrDefaultAsync();
         }
     }
 }

@@ -1,7 +1,8 @@
 ﻿@page "/history"
 @using MyJournalBlazor.Models
 @using MyJournalBlazor.Services
-@inject DatabaseService DbService
+@inject IDatabaseService DbService
+@inject IDialogService DialogService
 
 <div class="fade-in">
     <h1 class="mb-4">History</h1>
@@ -77,9 +78,18 @@
         filteredEntries = allEntries;
     }
 
-    private async Task ViewEntry(JournalEntry item)
+    private void ViewEntry(JournalEntry item)
     {
-        await App.Current.MainPage.DisplayAlert(item.Title, item.Content, "Close");
+        var parameters = new DialogParameters { ["Entry"] = item };
+
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            MaxWidth = MaxWidth.Medium,
+            FullWidth = true
+        };
+
+        DialogService.Show<Components.Dialogs.EntryDialog>("View Entry", parameters, options);
     }
 
     private async Task DeleteEntry(JournalEntry item)

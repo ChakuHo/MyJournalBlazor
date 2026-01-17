@@ -1,69 +1,169 @@
 ﻿@page "/journal"
 @using MyJournalBlazor.Models
 @using MyJournalBlazor.Services
-@inject DatabaseService DbService
+@using MudBlazor
 
-<div class="fade-in">
-    <h1 class="mb-4">New Entry</h1>
+@inject IDatabaseService DbService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavManager
+<!-- Spacer -->
+<div class="mt-4"></div>
 
-    <div class="journal-card">
+<!-- Font Size Wrapper -->
+<div class="@FontSizeClass">
 
-        <div class="row">
-            <div class="col-md-6 mb-3">
-                <label class="form-label">Date</label>
-                <input type="date" class="form-control" @bind="currentEntry.Date" />
-            </div>
-
-            <div class="col-md-6 mb-3">
-                <label class="form-label">Mood</label>
-                <select class="form-control" @bind="currentEntry.Mood">
-                    <option>Positive</option>
-                    <option>Neutral</option>
-                    <option>Negative</option>
-                </select>
-            </div>
+    <!-- HEADER -->
+    <div class="d-flex justify-space-between align-center mb-6">
+        <div class="d-flex align-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.EditNote" Size="Size.Large" Color="Color.Primary" />
+            <MudText Typo="Typo.h4" Style="font-weight:bold;">Daily Entry</MudText>
         </div>
 
-        <div class="mb-3">
-            <label class="form-label">Title</label>
-            <input type="text" class="form-control" placeholder="Summarize your day..." @bind="currentEntry.Title" />
-        </div>
-
-        <div class="mb-3">
-            <label class="form-label">Content</label>
-            <textarea class="form-control" rows="6" placeholder="What happened today?" @bind="currentEntry.Content"></textarea>
-        </div>
-
-        <button class="btn btn-primary w-100" @onclick="SaveEntry">Save Entry</button>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="SaveEntry"
+                   Disabled="@isSaving"
+                   StartIcon="@Icons.Material.Filled.Save">
+            @if (isSaving)
+            {
+                <MudText>Saving...</MudText>
+            }
+            else
+            {
+                <MudText>Save</MudText>
+            }
+        </MudButton>
     </div>
+
+    <!-- FORM -->
+    <MudPaper Class="pa-6 mb-6" Elevation="3">
+        <MudGrid>
+            <!-- DATE PICKER (With Future Date Blocking) -->
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Label="Select Date"
+                               Date="selectedDate"
+                               DateChanged="OnDateChanged"
+                               Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               MaxDate="@DateTime.Today"
+                               HelperText="You cannot journal for the future!" />
+                <!-- MaxDate="@DateTime.Today" prevents selecting tomorrow -->
+            </MudItem>
+
+            <!-- MOOD -->
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" Label="Mood" @bind-Value="currentEntry.Mood" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" AdornmentIcon="@Icons.Material.Filled.Mood">
+                    <MudSelectItem Value="@("Positive")">Positive</MudSelectItem>
+                    <MudSelectItem Value="@("Neutral")">Neutral</MudSelectItem>
+                    <MudSelectItem Value="@("Negative")">Negative</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <!-- TITLE -->
+            <MudItem xs="12">
+                <MudTextField @bind-Value="currentEntry.Title" Label="Title" Variant="Variant.Outlined" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    <!-- EDITOR -->
+    <MudPaper Class="pa-4" Style="min-height: 450px;" Elevation="3">
+        <MudText Typo="Typo.h6" Class="mb-3">Journal Content</MudText>
+
+        <div class="@(IsDarkMode ? "dark-mode-quill" : "")">
+            <div id="quill-editor" style="height: 350px;"></div>
+        </div>
+    </MudPaper>
+
 </div>
 
 @code {
-    private JournalEntry currentEntry = new JournalEntry();
+    [CascadingParameter(Name = "IsDarkMode")]
+    public bool IsDarkMode { get; set; }
+
+    [CascadingParameter(Name = "FontSizeClass")]
+    public string FontSizeClass { get; set; }
+
+    JournalEntry currentEntry = new JournalEntry();
+    DateTime? selectedDate = DateTime.Today;
+    bool isEditorInitialized = false;
+    bool isSaving = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadEntryForDate(DateTime.Today);
+            isEditorInitialized = true;
+        }
+    }
+
+    private async Task OnDateChanged(DateTime? newDate)
+    {
+        selectedDate = newDate;
+        if (newDate.HasValue)
+        {
+            await LoadEntryForDate(newDate.Value);
+        }
+    }
+
+    // THIS IS THE LOGIC THAT ENFORCES "ONE ENTRY PER DAY"
+    private async Task LoadEntryForDate(DateTime date)
+    {
+        // 1. Ask Database: "Do we have an entry for this exact date?"
+        var existing = await DbService.GetEntryByDateAsync(date);
+
+        if (existing != null)
+        {
+            // YES -> Load it (Edit Mode)
+            currentEntry = existing;
+            Snackbar.Add($"Loaded entry for {date.ToShortDateString()}", Severity.Info);
+        }
+        else
+        {
+            // NO -> Create clean slate (New Mode)
+            currentEntry = new JournalEntry { Date = date };
+        }
+
+        // 2. Load the text into the editor
+        if (isEditorInitialized)
+        {
+            await JSRuntime.InvokeVoidAsync("quillInterop.setHtml", currentEntry.Content);
+        }
+        else
+        {
+            await JSRuntime.InvokeVoidAsync("quillInterop.init", "quill-editor", currentEntry.Content);
+        }
+    }
 
     private async Task SaveEntry()
     {
-        // 1. VALIDATION CHECK
+        string htmlContent = await JSRuntime.InvokeAsync<string>("quillInterop.getHtml");
+        currentEntry.Content = htmlContent;
+
         if (string.IsNullOrWhiteSpace(currentEntry.Title))
         {
-            await App.Current.MainPage.DisplayAlert("Validation Error", "Please write a Title for your entry.", "OK");
+            Snackbar.Add("Title is required!", Severity.Warning);
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(currentEntry.Content))
-        {
-            await App.Current.MainPage.DisplayAlert("Validation Error", "You cannot save an empty journal! Write something.", "OK");
-            return;
-        }
+        isSaving = true;
+        StateHasChanged();
+        await Task.Delay(500);
 
-        // 2. SAVE
-        currentEntry.CreatedAt = DateTime.Now;
+        // Ensure the date is correct
+        if (selectedDate.HasValue) currentEntry.Date = selectedDate.Value;
+
+        // Upsert (Update if exists, Insert if new)
         await DbService.SaveEntryAsync(currentEntry);
 
-        // 3. RESET FORM
-        currentEntry = new JournalEntry();
+        Snackbar.Add("Saved! Redirecting...", Severity.Success);
 
-        // 4. SUCCESS MESSAGE
-        await App.Current.MainPage.DisplayAlert("Success", "Journal Saved Successfully!", "OK");
+        // Redirect to History so the form feels "Finished"
+        await Task.Delay(1000);
+        NavManager.NavigateTo("/history");
+
+        isSaving = false;
     }
 }

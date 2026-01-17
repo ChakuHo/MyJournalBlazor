@@ -42,7 +42,16 @@
         else
         {
             <MudText Typo="Typo.h6" Align="Align.Center" Class="mb-4">Welcome back, <b>@UserService.UserName</b></MudText>
-            <MudTextField @bind-Value="loginPin" Label="Enter PIN" InputType="InputType.Password" MaxLength="4" Variant="Variant.Outlined" Class="mb-4" />
+            <MudTextField @bind-Value="loginPin"
+                          Label="Enter PIN"
+                          Variant="Variant.Outlined"
+                          Class="mb-4"
+                          MaxLength="4"
+                          InputType="@(isShowPin ? InputType.Text : InputType.Password)"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@(isShowPin ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                          OnAdornmentClick="@(() => isShowPin = !isShowPin)"
+                          AdornmentAriaLabel="Show Password" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" OnClick="DoLogin" Class="mb-3">Login</MudButton>
             <MudLink OnClick="() => isForgotPin = true" Underline="Underline.Always" Color="Color.Secondary" Class="d-flex justify-center">Forgot PIN?</MudLink>
         }
@@ -55,6 +64,7 @@
     bool isForgotPin = false;
     string regName, regPhone, regPin, regSecQ = "What is your mother last name?", regSecA;
     string loginPin, recoverAnswer, newPin;
+    bool isShowPin = false;
 
     protected override async Task OnInitializedAsync()
     {
