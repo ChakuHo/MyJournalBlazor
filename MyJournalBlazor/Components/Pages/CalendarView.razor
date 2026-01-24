@@ -1,0 +1,107 @@
+﻿@page "/calendar"
+@using MyJournalBlazor.Models
+@using MyJournalBlazor.Services
+@using MudBlazor
+
+@inject IDatabaseService DbService
+@inject IDialogService DialogService
+@inject NavigationManager NavManager
+
+<div class="fade-in">
+    <div class="d-flex align-center gap-2 mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Size="Size.Large" Color="Color.Primary" />
+        <MudText Typo="Typo.h4" Style="font-weight:bold;">Calendar</MudText>
+    </div>
+
+    <MudPaper Class="pa-4 align-center d-flex flex-column" Elevation="3">
+
+        <!-- THE CALENDAR -->
+        <MudDatePicker PickerVariant="PickerVariant.Static"
+                       Date="selectedDate"
+                       DateChanged="OnDateClicked"
+                       AdditionalDateClassesFunc="CheckEntryDate"
+                       Color="Color.Primary"
+                       Orientation="Orientation.Landscape" />
+
+        <div class="d-flex align-center mt-4 gap-2">
+            <div style="width: 12px; height: 12px; background-color: var(--mud-palette-primary); border-radius: 50%;"></div>
+            <MudText Color="Color.Secondary">Solid Circle = Entry Exists</MudText>
+        </div>
+    </MudPaper>
+</div>
+
+<style>
+    /* CSS to highlight days with entries (Filled Circle) */
+    .mud-day.entry-exists {
+        background-color: var(--mud-palette-primary) !important;
+        color: white !important;
+        border-radius: 50%;
+        font-weight: bold;
+    }
+</style>
+
+@code {
+    private DateTime? selectedDate = DateTime.Today;
+    private HashSet<DateTime> entryDates = new HashSet<DateTime>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCalendarData();
+    }
+
+    private async Task LoadCalendarData()
+    {
+        var entries = await DbService.GetEntriesAsync();
+        entryDates.Clear();
+        foreach (var e in entries)
+        {
+            entryDates.Add(e.Date.Date);
+        }
+    }
+
+    // 1. Highlight days logic
+    private string CheckEntryDate(DateTime date)
+    {
+        if (entryDates.Contains(date.Date))
+        {
+            return "entry-exists";
+        }
+        return string.Empty;
+    }
+
+    // 2. Click Logic
+    private async Task OnDateClicked(DateTime? date)
+    {
+        selectedDate = date; // Update visual selection
+
+        if (date.HasValue)
+        {
+            // Force strict check for THIS date
+            var entry = await DbService.GetEntryByDateAsync(date.Value);
+
+            if (entry != null)
+            {
+                // Found it! Show the dialog.
+                ViewEntry(entry);
+            }
+            else
+            {
+                // Nothing found. Ask to create.
+                bool create = await App.Current.MainPage.DisplayAlert("Empty Day",
+                    $"No entry found for {date.Value.ToShortDateString()}. Write one?", "Yes", "No");
+
+                if (create)
+                {
+                    NavManager.NavigateTo("/journal");
+                }
+            }
+        }
+    }
+
+    private void ViewEntry(JournalEntry item)
+    {
+        var parameters = new DialogParameters { ["Entry"] = item };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        DialogService.Show<Components.Dialogs.EntryDialog>("View Entry", parameters, options);
+    }
+}

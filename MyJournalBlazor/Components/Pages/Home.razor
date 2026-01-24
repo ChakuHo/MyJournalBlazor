@@ -7,10 +7,9 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavManager
-<!-- Spacer -->
+
 <div class="mt-4"></div>
 
-<!-- Font Size Wrapper -->
 <div class="@FontSizeClass">
 
     <!-- HEADER -->
@@ -39,7 +38,7 @@
     <!-- FORM -->
     <MudPaper Class="pa-6 mb-6" Elevation="3">
         <MudGrid>
-            <!-- DATE PICKER (With Future Date Blocking) -->
+            <!-- ROW 1 -->
             <MudItem xs="12" sm="6">
                 <MudDatePicker Label="Select Date"
                                Date="selectedDate"
@@ -47,20 +46,43 @@
                                Variant="Variant.Outlined"
                                Color="Color.Primary"
                                MaxDate="@DateTime.Today"
-                               HelperText="You cannot journal for the future!" />
-                <!-- MaxDate="@DateTime.Today" prevents selecting tomorrow -->
+                               HelperText="No journaling for the future!" />
             </MudItem>
 
-            <!-- MOOD -->
             <MudItem xs="12" sm="6">
-                <MudSelect T="string" Label="Mood" @bind-Value="currentEntry.Mood" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" AdornmentIcon="@Icons.Material.Filled.Mood">
+                <MudSelect T="string" Label="Primary Mood" @bind-Value="currentEntry.Mood" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" AdornmentIcon="@Icons.Material.Filled.EmojiEmotions">
                     <MudSelectItem Value="@("Positive")">Positive</MudSelectItem>
                     <MudSelectItem Value="@("Neutral")">Neutral</MudSelectItem>
                     <MudSelectItem Value="@("Negative")">Negative</MudSelectItem>
                 </MudSelect>
             </MudItem>
 
-            <!-- TITLE -->
+            <!-- ROW 2 -->
+            <MudItem xs="12" sm="6">
+                <!-- Uses SelectedValuesChanged to Limit to 2: only letting them select two moods -->
+                <MudSelect T="string" Label="Secondary Moods (Max 2)"
+                           MultiSelection="true"
+                           SelectedValues="selectedSecMoods"
+                           SelectedValuesChanged="OnSecMoodsChanged"
+                           Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter">
+                    @foreach (var mood in AvailableSecMoods)
+                    {
+                        <MudSelectItem Value="@mood">@mood</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" Label="Tags" MultiSelection="true" @bind-SelectedValues="selectedTags" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" AdornmentIcon="@Icons.Material.Filled.Label">
+                    @foreach (var tag in AvailableTags)
+                    {
+                        <MudSelectItem Value="@tag">@tag</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <!-- ROW 3 -->
             <MudItem xs="12">
                 <MudTextField @bind-Value="currentEntry.Title" Label="Title" Variant="Variant.Outlined" />
             </MudItem>
@@ -70,7 +92,6 @@
     <!-- EDITOR -->
     <MudPaper Class="pa-4" Style="min-height: 450px;" Elevation="3">
         <MudText Typo="Typo.h6" Class="mb-3">Journal Content</MudText>
-
         <div class="@(IsDarkMode ? "dark-mode-quill" : "")">
             <div id="quill-editor" style="height: 350px;"></div>
         </div>
@@ -90,6 +111,14 @@
     bool isEditorInitialized = false;
     bool isSaving = false;
 
+    // Dropdown Data
+    private string[] AvailableTags = { "Work", "Studies", "Family", "Health", "Fitness", "Travel", "Nature", "Finance", "Gaming", "Music" };
+    private string[] AvailableSecMoods = { "Happy", "Excited", "Relaxed", "Grateful", "Calm", "Bored", "Sad", "Angry", "Stressed", "Lonely" };
+
+    // Selection Holders
+    private IEnumerable<string> selectedTags { get; set; } = new HashSet<string>();
+    private IEnumerable<string> selectedSecMoods { get; set; } = new HashSet<string>();
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -102,39 +131,46 @@
     private async Task OnDateChanged(DateTime? newDate)
     {
         selectedDate = newDate;
-        if (newDate.HasValue)
+        if (newDate.HasValue) await LoadEntryForDate(newDate.Value);
+    }
+
+    // LIMIT SELECTION TO 2 MOODS
+    private void OnSecMoodsChanged(IEnumerable<string> values)
+    {
+        if (values.Count() > 2)
         {
-            await LoadEntryForDate(newDate.Value);
+            Snackbar.Add("Max 2 secondary moods allowed!", Severity.Warning);
+            // Keep only the first 2
+            selectedSecMoods = values.Take(2).ToList();
+        }
+        else
+        {
+            selectedSecMoods = values;
         }
     }
 
-    // THIS IS THE LOGIC THAT ENFORCES "ONE ENTRY PER DAY"
     private async Task LoadEntryForDate(DateTime date)
     {
-        // 1. Ask Database: "Do we have an entry for this exact date?"
         var existing = await DbService.GetEntryByDateAsync(date);
 
         if (existing != null)
         {
-            // YES -> Load it (Edit Mode)
             currentEntry = existing;
+            selectedTags = !string.IsNullOrEmpty(currentEntry.Tags) ? currentEntry.Tags.Split(',') : new HashSet<string>();
+            selectedSecMoods = !string.IsNullOrEmpty(currentEntry.SecondaryMoods) ? currentEntry.SecondaryMoods.Split(',') : new HashSet<string>();
             Snackbar.Add($"Loaded entry for {date.ToShortDateString()}", Severity.Info);
         }
         else
         {
-            // NO -> Create clean slate (New Mode)
             currentEntry = new JournalEntry { Date = date };
+            selectedTags = new HashSet<string>();
+            selectedSecMoods = new HashSet<string>();
         }
 
-        // 2. Load the text into the editor
         if (isEditorInitialized)
-        {
             await JSRuntime.InvokeVoidAsync("quillInterop.setHtml", currentEntry.Content);
-        }
         else
-        {
             await JSRuntime.InvokeVoidAsync("quillInterop.init", "quill-editor", currentEntry.Content);
-        }
     }
 
     private async Task SaveEntry()
@@ -152,15 +188,15 @@
         StateHasChanged();
         await Task.Delay(500);
 
-        // Ensure the date is correct
+        // Convert Lists -> Strings
+        currentEntry.Tags = string.Join(",", selectedTags);
+        currentEntry.SecondaryMoods = string.Join(",", selectedSecMoods);
+
         if (selectedDate.HasValue) currentEntry.Date = selectedDate.Value;
 
-        // Upsert (Update if exists, Insert if new)
         await DbService.SaveEntryAsync(currentEntry);
 
         Snackbar.Add("Saved! Redirecting...", Severity.Success);
-
-        // Redirect to History so the form feels "Finished"
         await Task.Delay(1000);
         NavManager.NavigateTo("/history");
 

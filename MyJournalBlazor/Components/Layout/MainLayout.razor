@@ -37,6 +37,7 @@
             <MudNavMenu>
                 <MudNavLink Href="journal" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Edit">Write Entry</MudNavLink>
                 <MudNavLink Href="history" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.History">History</MudNavLink>
+                <MudNavLink Href="calendar" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.CalendarMonth">Calendar</MudNavLink>
             </MudNavMenu>
         </MudDrawer>
     }
@@ -60,7 +61,7 @@
     private bool IsLoginPage = true;
     private int _fontSize = 1; // 0=Small, 1=Medium, 2=Large
 
-    // THEME: "Royal Blue Tech"
+    // THEME
     private MudTheme _theme = new MudTheme()
     {
         PaletteLight = new PaletteLight()

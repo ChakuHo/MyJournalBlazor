@@ -11,7 +11,14 @@ namespace MyJournalBlazor.Models
         public string Title { get; set; }
         public string Content { get; set; }
         public DateTime Date { get; set; } = DateTime.Now;
-        public string Mood { get; set; } = "Neutral";
+
+        // MOODS
+        public string Mood { get; set; } = "Neutral"; // Primary
+        public string SecondaryMoods { get; set; } // Comma-separated (e.g. "Tired,Excited")
+
+        // TAGS
+        public string Tags { get; set; } // Comma-separated (e.g. "Work,Fitness")
+
         public DateTime CreatedAt { get; set; }
     }
 }

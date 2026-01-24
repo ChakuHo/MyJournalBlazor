@@ -9,7 +9,6 @@ namespace MyJournalBlazor.Services
 {
     public interface IDatabaseService
     {
-        // Defining what the service MUST do, but not how.
         Task SaveEntryAsync(JournalEntry entry);
         Task<List<JournalEntry>> GetEntriesAsync();
         Task<JournalEntry> GetEntryByDateAsync(DateTime date);

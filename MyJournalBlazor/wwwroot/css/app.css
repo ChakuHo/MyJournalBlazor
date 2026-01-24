@@ -112,7 +112,7 @@ h1:focus {
     padding: 20px;
 }
 /*Dark mode for quill*/
-/* 1. Make the toolbar icons (Bold, Italic, etc.) Light Grey */
+
 .dark-mode-quill .ql-snow .ql-stroke {
     stroke: #e0e0e0 !important;
 }
@@ -121,18 +121,16 @@ h1:focus {
     fill: #e0e0e0 !important;
 }
 
-/* 2. Fix the Picker arrow (Drop downs) */
+
 .dark-mode-quill .ql-snow .ql-picker {
     color: #e0e0e0 !important;
 }
 
-/* 3. Make the typing text White */
 .dark-mode-quill .ql-editor {
     color: #ffffff !important;
-    background-color: #32333d; /* Matches MudBlazor Dark Paper */
+    background-color: #32333d;
 }
 
-/* 4. Fix the Borders to be subtle grey instead of harsh white */
 .dark-mode-quill .ql-toolbar.ql-snow {
     border-color: #4f4f4f !important;
     border-top-left-radius: 4px;
@@ -145,7 +143,7 @@ h1:focus {
     border-bottom-right-radius: 4px;
 }
 
-/* 5. Placeholder text (e.g. "Write your journal...") */
+
 .dark-mode-quill .ql-editor.ql-blank::before {
     color: #a0a0a0 !important;
     font-style: italic;

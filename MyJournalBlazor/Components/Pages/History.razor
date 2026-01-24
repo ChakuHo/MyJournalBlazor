@@ -1,71 +1,104 @@
 ﻿@page "/history"
+@using System.IO
 @using MyJournalBlazor.Models
 @using MyJournalBlazor.Services
+@using MudBlazor
+
 @inject IDatabaseService DbService
 @inject IDialogService DialogService
+@inject Services.PdfService PdfService
 
 <div class="fade-in">
-    <h1 class="mb-4">History</h1>
-
-    <!-- Search Bar -->
-    <div class="input-group mb-4 shadow-sm">
-        <span class="input-group-text">Search</span>
-        <input type="text" class="form-control" placeholder="Search entries..."
-               @bind="searchText" @bind:event="oninput" @onkeyup="FilterEntries" />
+    <div class="d-flex align-center gap-2 mb-4">
+        <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Large" Color="Color.Primary" />
+        <MudText Typo="Typo.h4" Style="font-weight:bold;">History</MudText>
     </div>
 
-    @if (filteredEntries == null)
-    {
-        <p>Loading...</p>
-    }
-    else if (filteredEntries.Count == 0)
-    {
-        <div class="alert alert-info">No entries found. Go write one!</div>
-    }
-    else
-    {
-        <div class="journal-card">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Mood</th>
-                        <th>Title</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var item in filteredEntries)
-                    {
-                        <tr>
-                            <td>@item.Date.ToShortDateString()</td>
-                            <td>
-                                <span class="badge @GetMoodColor(item.Mood)">@item.Mood</span>
-                            </td>
-                            <td>@item.Title</td>
-                            <td>
-                                <!-- VIEW BUTTON -->
-                                <button class="btn btn-outline-primary btn-sm me-2" @onclick="() => ViewEntry(item)">
-                                    View
-                                </button>
+    <!-- MUD TABLE -->
+    <MudTable Items="@allEntries" Hover="true" Filter="new Func<JournalEntry,bool>(FilterFunc)" Elevation="3" RowsPerPage="5">
 
-                                <!-- DELETE BUTTON -->
-                                <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteEntry(item)">
-                                    Delete
-                                </button>
-                            </td>
-                        </tr>
+        <ToolBarContent>
+            <MudText Typo="Typo.h6">Past Entries</MudText>
+            <MudSpacer />
+
+            <!-- EXPORT BUTTON -->
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Secondary"
+                       OnClick="ExportPdf"
+                       StartIcon="@Icons.Material.Filled.PictureAsPdf"
+                       Class="mr-4">
+                Export PDF
+            </MudButton>
+
+            <MudTextField @bind-Value="searchString" Placeholder="Search..." Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Medium" Class="mt-0"></MudTextField>
+        </ToolBarContent>
+
+        <HeaderContent>
+            <MudTh>Date</MudTh>
+            <MudTh>Moods</MudTh>
+            <MudTh>Tags</MudTh>
+            <MudTh>Title</MudTh>
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+
+        <RowTemplate>
+            <MudTd DataLabel="Date">@context.Date.ToShortDateString()</MudTd>
+
+            <MudTd DataLabel="Moods">
+                <!-- Primary Mood -->
+                <MudChip T="string" Color="@GetMoodColor(context.Mood)" Size="Size.Small">@context.Mood</MudChip>
+
+                <!-- Secondary Moods-->
+                @if (!string.IsNullOrEmpty(context.SecondaryMoods))
+                {
+                    @foreach (var sm in context.SecondaryMoods.Split(','))
+                    {
+                        <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">@sm</MudChip>
                     }
-                </tbody>
-            </table>
-        </div>
-    }
+                }
+            </MudTd>
+
+            <MudTd DataLabel="Tags">
+                @if (!string.IsNullOrEmpty(context.Tags))
+                {
+                    @foreach (var tag in context.Tags.Split(','))
+                    {
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Text">#@tag</MudChip>
+                    }
+                }
+            </MudTd>
+
+            <MudTd DataLabel="Title">@context.Title</MudTd>
+
+            <MudTd DataLabel="Actions">
+                <!-- VIEW BUTTON -->
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           Class="mr-2"
+                           OnClick="() => ViewEntry(context)">
+                    View
+                </MudButton>
+
+                <!-- DELETE BUTTON -->
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           Size="Size.Small"
+                           OnClick="() => DeleteEntry(context)">
+                    Delete
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
 </div>
 
 @code {
     private List<JournalEntry> allEntries = new List<JournalEntry>();
-    private List<JournalEntry> filteredEntries = new List<JournalEntry>();
-    private string searchText = "";
+    private string searchString = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -75,20 +108,23 @@
     private async Task LoadEntries()
     {
         allEntries = await DbService.GetEntriesAsync();
-        filteredEntries = allEntries;
+    }
+
+    private bool FilterFunc(JournalEntry entry)
+    {
+        if (string.IsNullOrWhiteSpace(searchString)) return true;
+
+        if (entry.Title.Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
+        if (entry.Mood.Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
+        if (entry.Tags != null && entry.Tags.Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
+
+        return false;
     }
 
     private void ViewEntry(JournalEntry item)
     {
         var parameters = new DialogParameters { ["Entry"] = item };
-
-        var options = new DialogOptions
-        {
-            CloseOnEscapeKey = true,
-            MaxWidth = MaxWidth.Medium,
-            FullWidth = true
-        };
-
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
         DialogService.Show<Components.Dialogs.EntryDialog>("View Entry", parameters, options);
     }
 
@@ -102,21 +138,25 @@
         }
     }
 
-    private void FilterEntries()
+    private Color GetMoodColor(string mood) => mood switch
     {
-        if (string.IsNullOrWhiteSpace(searchText))
-            filteredEntries = allEntries;
-        else
-            filteredEntries = allEntries.Where(x => x.Title.ToLower().Contains(searchText.ToLower())).ToList();
-    }
+        "Positive" => Color.Success,
+        "Negative" => Color.Error,
+        _ => Color.Warning
+    };
 
-    private string GetMoodColor(string mood)
+    private async Task ExportPdf()
     {
-        return mood switch
-        {
-            "Positive" => "bg-success",
-            "Negative" => "bg-danger",
-            _ => "bg-secondary"
-        };
+        var data = await DbService.GetEntriesAsync();
+        // Generate
+        var pdfBytes = PdfService.GeneratePdf(data);
+
+        // Save
+        string fileName = $"Journal_Export_{DateTime.Now:yyyyMMdd}.pdf";
+        string filePath = Path.Combine(FileSystem.AppDataDirectory, fileName);
+
+        File.WriteAllBytes(filePath, pdfBytes);
+
+        await App.Current.MainPage.DisplayAlert("Export Success", $"PDF saved to:\n{filePath}", "OK");
     }
 }
