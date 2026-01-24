@@ -1,0 +1,471 @@
+﻿@page "/dashboard"
+@using MyJournalBlazor.Models
+@using MyJournalBlazor.Services
+@using MudBlazor
+@using System.Text.RegularExpressions
+
+@inject IDatabaseService DbService
+
+<div class="d-flex align-center gap-2 mb-4">
+    <MudIcon Icon="@Icons.Material.Filled.Insights" Size="Size.Large" Color="Color.Primary" />
+    <MudText Typo="Typo.h4" Style="font-weight:700;">Dashboard</MudText>
+</div>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid AlignItems="AlignItems.Center">
+        <MudItem xs="12" md="6">
+            <MudDateRangePicker Label="Analytics Date Range"
+                                @bind-DateRange="_range"
+                                Variant="Variant.Outlined"
+                                Color="Color.Primary"
+                                PickerVariant="PickerVariant.Inline"
+                                DisableToolbar="true" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Stats update based on the selected range. Future dates are ignored.
+            </MudText>
+        </MudItem>
+
+        <MudItem xs="12" md="6" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       Disabled="@_loading"
+                       OnClick="Reload">
+                Refresh
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" />
+}
+else if (_filteredEntries.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        No entries in the selected range.
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+
+        <!-- KPI Cards -->
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Total Entries</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Primary">@TotalEntries</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Current Streak</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Success">@CurrentStreak</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Ends at: @_streakAnchorDate.ToString("dd/MM/yyyy")
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Longest Streak</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Warning">@LongestStreak</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Missed Days</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Error">@MissedDaysCount</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Mood + Tag analytics -->
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Mood Distribution (Primary)</MudText>
+
+                <MudChart ChartType="ChartType.Donut"
+                          Width="100%"
+                          Height="260px"
+                          InputLabels="@_moodLabels"
+                          InputData="@_moodData" />
+
+                <MudDivider Class="my-3" />
+
+                <MudText Typo="Typo.subtitle2">
+                    Top Primary Mood: <b>@TopPrimaryMood</b>
+                </MudText>
+                <MudText Typo="Typo.subtitle2">
+                    Top Secondary Mood: <b>@TopSecondaryMood</b>
+                </MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Most Used Tags (Top 5 + Other)</MudText>
+
+                @if (_tagPieData.Length == 0)
+                {
+                    <MudText>No tag data yet.</MudText>
+                }
+                else
+                {
+                    <MudChart ChartType="ChartType.Pie"
+                              Width="100%"
+                              Height="260px"
+                              InputLabels="@_tagPieLabels"
+                              InputData="@_tagPieData" />
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Tag Breakdown (Entries containing the tag)</MudText>
+
+                @if (_tagBarSeries.Count == 0)
+                {
+                    <MudText>No tag breakdown yet.</MudText>
+                }
+                else
+                {
+                    <MudChart ChartType="ChartType.Bar"
+                              ChartSeries="@_tagBarSeries"
+                              XAxisLabels="@_tagBarLabels"
+                              Height="260px" />
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h6" Class="mb-3">Word Count Trend (per day)</MudText>
+
+                <MudChart ChartType="ChartType.Line"
+                          ChartSeries="@_wordSeries"
+                          XAxisLabels="@_wordLabels"
+                          Height="280px" />
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudExpansionPanels>
+                <MudExpansionPanel Text="Missed Days (Preview)">
+                    @if (_missedDaysPreview.Count == 0)
+                    {
+                        <MudText>None 🎯</MudText>
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Showing up to 20 missed days in the selected range.
+                        </MudText>
+                        <MudChipSet T="string" MultiSelection="false">
+                            @foreach (var d in _missedDaysPreview)
+                            {
+                                <MudChip T="string" Color="Color.Error" Variant="Variant.Outlined">@d.ToString("dd/MM/yyyy")</MudChip>
+                            }
+                        </MudChipSet>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+        </MudItem>
+
+    </MudGrid>
+}
+
+@code {
+    private bool _loading = true;
+
+    // Range: default last 30 days
+    private DateRange _range = new DateRange(DateTime.Today.AddDays(-30), DateTime.Today);
+
+    private List<JournalEntry> _allEntries = new();
+    private List<JournalEntry> _filteredEntries = new();
+
+    // KPI outputs
+    private int TotalEntries { get; set; }
+    private int CurrentStreak { get; set; }
+    private int LongestStreak { get; set; }
+    private int MissedDaysCount { get; set; }
+    private DateTime _streakAnchorDate;
+
+    private string TopPrimaryMood { get; set; } = "-";
+    private string TopSecondaryMood { get; set; } = "-";
+
+    // Mood chart
+    private readonly string[] _moodLabels = { "Positive", "Neutral", "Negative" };
+    private double[] _moodData = { 0, 0, 0 };
+
+    // Tag pie
+    private string[] _tagPieLabels = Array.Empty<string>();
+    private double[] _tagPieData = Array.Empty<double>();
+
+    // Tag bar
+    private List<ChartSeries> _tagBarSeries = new();
+    private string[] _tagBarLabels = Array.Empty<string>();
+
+    // Words trend
+    private List<ChartSeries> _wordSeries = new();
+    private string[] _wordLabels = Array.Empty<string>();
+
+    // Missed days preview list
+    private List<DateTime> _missedDaysPreview = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        _allEntries = await DbService.GetEntriesAsync();
+        ApplyRangeFilter();
+        ComputeAll();
+
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private void ApplyRangeFilter()
+    {
+        var start = (_range.Start ?? DateTime.Today.AddDays(-30)).Date;
+        var end = (_range.End ?? DateTime.Today).Date;
+
+        // Not considering future dates in analytics
+        if (end > DateTime.Today) end = DateTime.Today;
+
+        _filteredEntries = _allEntries
+            .Where(e => e.Date.Date >= start && e.Date.Date <= end)
+            .ToList();
+    }
+
+    private void ComputeAll()
+    {
+        TotalEntries = _filteredEntries.Count;
+
+        if (TotalEntries == 0)
+        {
+            ResetOutputs();
+            return;
+        }
+
+        ComputeMoodAnalytics();
+        ComputeTagAnalytics();
+        ComputeWordTrend();
+        ComputeStreaksAndMissedDays();
+    }
+
+    private void ResetOutputs()
+    {
+        TotalEntries = 0;
+        CurrentStreak = 0;
+        LongestStreak = 0;
+        MissedDaysCount = 0;
+        TopPrimaryMood = "-";
+        TopSecondaryMood = "-";
+
+        _moodData = new double[] { 0, 0, 0 };
+        _tagPieLabels = Array.Empty<string>();
+        _tagPieData = Array.Empty<double>();
+        _tagBarSeries = new();
+        _tagBarLabels = Array.Empty<string>();
+        _wordSeries = new();
+        _wordLabels = Array.Empty<string>();
+        _missedDaysPreview = new();
+        _streakAnchorDate = DateTime.Today;
+    }
+
+    // Mood distribution + most frequent moods
+    private void ComputeMoodAnalytics()
+    {
+        _moodData = new double[]
+        {
+            _filteredEntries.Count(e => e.Mood == "Positive"),
+            _filteredEntries.Count(e => e.Mood == "Neutral"),
+            _filteredEntries.Count(e => e.Mood == "Negative")
+            };
+
+        TopPrimaryMood = _filteredEntries
+            .GroupBy(e => e.Mood)
+            .OrderByDescending(g => g.Count())
+            .First().Key;
+
+        // Secondary moods: flatten and find most frequent
+        var sec = _filteredEntries
+            .Where(e => !string.IsNullOrWhiteSpace(e.SecondaryMoods))
+            .SelectMany(e => e.SecondaryMoods.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        TopSecondaryMood = sec.Count == 0
+            ? "-"
+            : sec.GroupBy(x => x).OrderByDescending(g => g.Count()).First().Key;
+    }
+
+    // Most used tags + tag breakdown
+    private void ComputeTagAnalytics()
+    {
+        // Occurrence count (for pie)
+        var allTags = _filteredEntries
+            .Where(e => !string.IsNullOrWhiteSpace(e.Tags))
+            .SelectMany(e => e.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        var top5 = allTags
+            .GroupBy(t => t)
+            .Select(g => new { Tag = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .Take(5)
+            .ToList();
+
+        if (top5.Count == 0)
+        {
+            _tagPieLabels = Array.Empty<string>();
+            _tagPieData = Array.Empty<double>();
+            _tagBarSeries = new();
+            _tagBarLabels = Array.Empty<string>();
+            return;
+        }
+
+        int otherCount = allTags.Count - top5.Sum(x => x.Count);
+
+        var pieLabels = new List<string>();
+        var pieData = new List<double>();
+
+        foreach (var x in top5)
+        {
+            pieLabels.Add(x.Tag);
+            pieData.Add(x.Count);
+        }
+
+        if (otherCount > 0)
+        {
+            pieLabels.Add("Other");
+            pieData.Add(otherCount);
+        }
+
+        _tagPieLabels = pieLabels.ToArray();
+        _tagPieData = pieData.ToArray();
+
+        // Tag breakdown by entries containing tag (not occurrences)
+        var entryTagCounts = top5
+            .Select(t =>
+            {
+                int entriesContaining = _filteredEntries.Count(e =>
+                    !string.IsNullOrWhiteSpace(e.Tags) &&
+                    e.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                          .Select(x => x.Trim())
+                          .Contains(t.Tag));
+
+                return new { t.Tag, Count = (double)entriesContaining };
+            })
+            .ToList();
+
+        _tagBarLabels = entryTagCounts.Select(x => x.Tag).ToArray();
+        _tagBarSeries = new List<ChartSeries>
+    {
+            new ChartSeries { Name = "Entries", Data = entryTagCounts.Select(x => x.Count).ToArray() }
+        };
+    }
+
+    // Word count trends
+    private void ComputeWordTrend()
+    {
+        // per day word count (one entry per day anyway, but grouped safely)
+        var perDay = _filteredEntries
+            .GroupBy(e => e.Date.Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new
+            {
+                Day = g.Key,
+                Words = g.Average(x => (double)CountWordsFromHtml(x.Content))
+            })
+            .ToList();
+
+        _wordLabels = perDay.Select(x => x.Day.ToString("dd/MM")).ToArray();
+        _wordSeries = new List<ChartSeries>
+    {
+            new ChartSeries { Name = "Avg Words", Data = perDay.Select(x => x.Words).ToArray() }
+        };
+    }
+
+    // Current streak, longest streak, missed days
+    private void ComputeStreaksAndMissedDays()
+    {
+        var start = (_range.Start ?? DateTime.Today.AddDays(-30)).Date;
+        var end = (_range.End ?? DateTime.Today).Date;
+        if (end > DateTime.Today) end = DateTime.Today;
+
+        // Distinct dates where entries exist
+        var dateSet = _filteredEntries.Select(e => e.Date.Date).ToHashSet();
+        var datesAsc = dateSet.OrderBy(d => d).ToList();
+        if (datesAsc.Count == 0)
+        {
+            CurrentStreak = 0;
+            LongestStreak = 0;
+            MissedDaysCount = (end - start).Days + 1;
+            _missedDaysPreview = Enumerable.Range(0, Math.Min(20, MissedDaysCount))
+                                           .Select(i => start.AddDays(i))
+                                           .ToList();
+            _streakAnchorDate = end;
+            return;
+        }
+
+        // Longest streak within range
+        int run = 1;
+        int max = 1;
+        for (int i = 1; i < datesAsc.Count; i++)
+        {
+            if (datesAsc[i] == datesAsc[i - 1].AddDays(1))
+                run++;
+            else
+                run = 1;
+
+            if (run > max) max = run;
+        }
+        LongestStreak = max;
+
+        // Current streak ends at anchor date:
+        // anchor = min(today, rangeEnd)
+        _streakAnchorDate = end;
+        int current = 0;
+        var d = _streakAnchorDate;
+
+        while (d >= start && dateSet.Contains(d))
+        {
+            current++;
+            d = d.AddDays(-1);
+        }
+        CurrentStreak = current;
+
+        // Missed days inside range [start..end]
+        var missed = new List<DateTime>();
+        for (var day = start; day <= end; day = day.AddDays(1))
+        {
+            if (!dateSet.Contains(day))
+                missed.Add(day);
+        }
+
+        MissedDaysCount = missed.Count;
+        _missedDaysPreview = missed.Take(20).ToList();
+    }
+
+    private int CountWordsFromHtml(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return 0;
+        var text = Regex.Replace(html, "<.*?>", " ");
+        return text.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
+    }
+}

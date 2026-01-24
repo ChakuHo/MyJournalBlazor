@@ -2,6 +2,7 @@
 @using MyJournalBlazor.Models
 @using MyJournalBlazor.Services
 @using MudBlazor
+@using System.Text.RegularExpressions
 
 @inject IDatabaseService DbService
 @inject ISnackbar Snackbar
@@ -50,7 +51,12 @@
             </MudItem>
 
             <MudItem xs="12" sm="6">
-                <MudSelect T="string" Label="Primary Mood" @bind-Value="currentEntry.Mood" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" AdornmentIcon="@Icons.Material.Filled.EmojiEmotions">
+                <MudSelect T="string"
+                           Label="Primary Mood"
+                           @bind-Value="currentEntry.Mood"
+                           Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter"
+                           AdornmentIcon="@Icons.Material.Filled.EmojiEmotions">
                     <MudSelectItem Value="@("Positive")">Positive</MudSelectItem>
                     <MudSelectItem Value="@("Neutral")">Neutral</MudSelectItem>
                     <MudSelectItem Value="@("Negative")">Negative</MudSelectItem>
@@ -59,8 +65,8 @@
 
             <!-- ROW 2 -->
             <MudItem xs="12" sm="6">
-                <!-- Uses SelectedValuesChanged to Limit to 2: only letting them select two moods -->
-                <MudSelect T="string" Label="Secondary Moods (Max 2)"
+                <MudSelect T="string"
+                           Label="Secondary Moods (Max 2)"
                            MultiSelection="true"
                            SelectedValues="selectedSecMoods"
                            SelectedValuesChanged="OnSecMoodsChanged"
@@ -74,7 +80,13 @@
             </MudItem>
 
             <MudItem xs="12" sm="6">
-                <MudSelect T="string" Label="Tags" MultiSelection="true" @bind-SelectedValues="selectedTags" Variant="Variant.Outlined" AnchorOrigin="Origin.BottomCenter" AdornmentIcon="@Icons.Material.Filled.Label">
+                <MudSelect T="string"
+                           Label="Tags"
+                           MultiSelection="true"
+                           @bind-SelectedValues="selectedTags"
+                           Variant="Variant.Outlined"
+                           AnchorOrigin="Origin.BottomCenter"
+                           AdornmentIcon="@Icons.Material.Filled.Label">
                     @foreach (var tag in AvailableTags)
                     {
                         <MudSelectItem Value="@tag">@tag</MudSelectItem>
@@ -104,16 +116,20 @@
     public bool IsDarkMode { get; set; }
 
     [CascadingParameter(Name = "FontSizeClass")]
-    public string FontSizeClass { get; set; }
+    public string FontSizeClass { get; set; } = "font-medium";
 
-    JournalEntry currentEntry = new JournalEntry();
-    DateTime? selectedDate = DateTime.Today;
-    bool isEditorInitialized = false;
-    bool isSaving = false;
+    private JournalEntry currentEntry = new JournalEntry();
+    private DateTime? selectedDate = DateTime.Today;
+
+    private bool isEditorInitialized = false;
+    private bool isSaving = false;
 
     // Dropdown Data
-    private string[] AvailableTags = { "Work", "Studies", "Family", "Health", "Fitness", "Travel", "Nature", "Finance", "Gaming", "Music" };
-    private string[] AvailableSecMoods = { "Happy", "Excited", "Relaxed", "Grateful", "Calm", "Bored", "Sad", "Angry", "Stressed", "Lonely" };
+    private readonly string[] AvailableTags =
+        { "Work", "Studies", "Family", "Health", "Fitness", "Travel", "Nature", "Finance", "Gaming", "Music" };
+
+    private readonly string[] AvailableSecMoods =
+        { "Happy", "Excited", "Relaxed", "Grateful", "Calm", "Bored", "Sad", "Angry", "Stressed", "Lonely" };
 
     // Selection Holders
     private IEnumerable<string> selectedTags { get; set; } = new HashSet<string>();
@@ -131,42 +147,64 @@
     private async Task OnDateChanged(DateTime? newDate)
     {
         selectedDate = newDate;
-        if (newDate.HasValue) await LoadEntryForDate(newDate.Value);
+        if (newDate.HasValue)
+            await LoadEntryForDate(newDate.Value.Date);
     }
 
     // LIMIT SELECTION TO 2 MOODS
     private void OnSecMoodsChanged(IEnumerable<string> values)
     {
-        if (values.Count() > 2)
+        var list = values?.ToList() ?? new List<string>();
+
+        if (list.Count > 2)
         {
             Snackbar.Add("Max 2 secondary moods allowed!", Severity.Warning);
-            // Keep only the first 2
-            selectedSecMoods = values.Take(2).ToList();
+            selectedSecMoods = list.Take(2).ToList();
         }
         else
         {
-            selectedSecMoods = values;
+            selectedSecMoods = list;
         }
     }
 
     private async Task LoadEntryForDate(DateTime date)
     {
+        date = date.Date;
+
         var existing = await DbService.GetEntryByDateAsync(date);
 
         if (existing != null)
         {
+            // EDIT MODE (load)
             currentEntry = existing;
-            selectedTags = !string.IsNullOrEmpty(currentEntry.Tags) ? currentEntry.Tags.Split(',') : new HashSet<string>();
-            selectedSecMoods = !string.IsNullOrEmpty(currentEntry.SecondaryMoods) ? currentEntry.SecondaryMoods.Split(',') : new HashSet<string>();
+
+            selectedTags = !string.IsNullOrWhiteSpace(currentEntry.Tags)
+                ? currentEntry.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList()
+                : new HashSet<string>();
+
+            selectedSecMoods = !string.IsNullOrWhiteSpace(currentEntry.SecondaryMoods)
+                ? currentEntry.SecondaryMoods.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList()
+                : new HashSet<string>();
+
             Snackbar.Add($"Loaded entry for {date.ToShortDateString()}", Severity.Info);
         }
         else
         {
-            currentEntry = new JournalEntry { Date = date };
+            currentEntry = new JournalEntry
+            {
+                Date = date,
+                Mood = "Neutral",
+                Title = "",
+                Content = "",
+                Tags = "",
+                SecondaryMoods = ""
+            };
+
             selectedTags = new HashSet<string>();
             selectedSecMoods = new HashSet<string>();
         }
 
+        // Load into Quill
         if (isEditorInitialized)
             await JSRuntime.InvokeVoidAsync("quillInterop.setHtml", currentEntry.Content);
         else
@@ -175,29 +213,48 @@
 
     private async Task SaveEntry()
     {
-        string htmlContent = await JSRuntime.InvokeAsync<string>("quillInterop.getHtml");
-        currentEntry.Content = htmlContent;
+        // max 2 moods
+        if (selectedSecMoods.Count() > 2)
+        {
+            Snackbar.Add("Max 2 secondary moods allowed!", Severity.Error);
+            return;
+        }
 
+        // Pull HTML from Quill
+        string htmlContent = await JSRuntime.InvokeAsync<string>("quillInterop.getHtml");
+        currentEntry.Content = htmlContent ?? "";
+
+        // Validate title
         if (string.IsNullOrWhiteSpace(currentEntry.Title))
         {
             Snackbar.Add("Title is required!", Severity.Warning);
             return;
         }
 
+        // Validate content (strip HTML)
+        var plain = Regex.Replace(currentEntry.Content, "<.*?>", " ").Trim();
+        if (string.IsNullOrWhiteSpace(plain))
+        {
+            Snackbar.Add("Content cannot be empty. Please write something.", Severity.Warning);
+            return;
+        }
+
         isSaving = true;
         StateHasChanged();
-        await Task.Delay(500);
+        await Task.Delay(300);
 
-        // Convert Lists -> Strings
-        currentEntry.Tags = string.Join(",", selectedTags);
-        currentEntry.SecondaryMoods = string.Join(",", selectedSecMoods);
+        // Convert List -> string for DB
+        currentEntry.Tags = string.Join(",", (selectedTags ?? Array.Empty<string>()).Select(x => x.Trim()).Where(x => !string.IsNullOrWhiteSpace(x)));
+        currentEntry.SecondaryMoods = string.Join(",", (selectedSecMoods ?? Array.Empty<string>()).Select(x => x.Trim()).Where(x => !string.IsNullOrWhiteSpace(x)));
 
-        if (selectedDate.HasValue) currentEntry.Date = selectedDate.Value;
+        // Normalize date
+        if (selectedDate.HasValue)
+            currentEntry.Date = selectedDate.Value.Date;
 
         await DbService.SaveEntryAsync(currentEntry);
 
         Snackbar.Add("Saved! Redirecting...", Severity.Success);
-        await Task.Delay(1000);
+        await Task.Delay(800);
         NavManager.NavigateTo("/history");
 
         isSaving = false;

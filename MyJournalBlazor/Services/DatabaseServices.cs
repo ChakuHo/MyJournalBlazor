@@ -20,24 +20,43 @@ namespace MyJournalBlazor.Services
         {
             await Init();
 
-            // Checking if we already have an ID (Update) or if it's new (Insert)
+            // Normalize date (remove time) so "one entry per day" is strict
+            entry.Date = entry.Date.Date;
+
+            var now = DateTime.Now;
+
+            // If the entry already has an ID, it's definitely an update
             if (entry.Id != 0)
             {
+                entry.UpdatedAt = now;
+
+                // CreatedAt should not change on updates (but ensuring that it exists)
+                if (entry.CreatedAt == default)
+                    entry.CreatedAt = now;
+
+                await _db.UpdateAsync(entry);
+                return;
+            }
+
+            // If ID == 0, check if an entry for this day already exists
+            var existing = await GetEntryByDateAsync(entry.Date);
+
+            if (existing != null)
+            {
+                // Update existing row instead of inserting a duplicate
+                entry.Id = existing.Id;
+                entry.CreatedAt = existing.CreatedAt;  // preserve original create time
+                entry.UpdatedAt = now;
+
                 await _db.UpdateAsync(entry);
             }
             else
             {
-                // Checking if an entry for this DATE already exists to prevent duplicates
-                var existing = await GetEntryByDateAsync(entry.Date);
-                if (existing != null)
-                {
-                    entry.Id = existing.Id; // Take the old ID
-                    await _db.UpdateAsync(entry); // Update instead of Insert
-                }
-                else
-                {
-                    await _db.InsertAsync(entry);
-                }
+                // Brand new entry
+                entry.CreatedAt = now;
+                entry.UpdatedAt = now;
+
+                await _db.InsertAsync(entry);
             }
         }
 

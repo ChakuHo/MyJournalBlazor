@@ -21,6 +21,12 @@
             <MudText Typo="Typo.h6">Past Entries</MudText>
             <MudSpacer />
 
+            <MudDateRangePicker Label="Export Range"
+                                @bind-DateRange="exportRange"
+                                Variant="Variant.Outlined"
+                                Color="Color.Primary"
+                                Class="mr-4" />
+
             <!-- EXPORT BUTTON -->
             <MudButton Variant="Variant.Filled"
                        Color="Color.Secondary"
@@ -51,7 +57,7 @@
                 <!-- Secondary Moods-->
                 @if (!string.IsNullOrEmpty(context.SecondaryMoods))
                 {
-                    @foreach (var sm in context.SecondaryMoods.Split(','))
+                    @foreach (var sm in context.SecondaryMoods.Split(',', StringSplitOptions.RemoveEmptyEntries))
                     {
                         <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small">@sm</MudChip>
                     }
@@ -61,7 +67,7 @@
             <MudTd DataLabel="Tags">
                 @if (!string.IsNullOrEmpty(context.Tags))
                 {
-                    @foreach (var tag in context.Tags.Split(','))
+                    @foreach (var tag in context.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries))
                     {
                         <MudChip T="string" Color="Color.Primary" Size="Size.Small" Variant="Variant.Text">#@tag</MudChip>
                     }
@@ -99,6 +105,7 @@
 @code {
     private List<JournalEntry> allEntries = new List<JournalEntry>();
     private string searchString = "";
+    private DateRange exportRange = new DateRange(DateTime.Today.AddDays(-30), DateTime.Today);
 
     protected override async Task OnInitializedAsync()
     {
@@ -114,9 +121,13 @@
     {
         if (string.IsNullOrWhiteSpace(searchString)) return true;
 
-        if (entry.Title.Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
-        if (entry.Mood.Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
-        if (entry.Tags != null && entry.Tags.Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
+        if ((entry.Title ?? "").Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
+        if ((entry.Mood ?? "").Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
+        if ((entry.Tags ?? "").Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Search CONTENT (strip HTML)
+        var plain = System.Text.RegularExpressions.Regex.Replace(entry.Content ?? "", "<.*?>", " ");
+        if (plain.Contains(searchString, StringComparison.OrdinalIgnoreCase)) return true;
 
         return false;
     }
@@ -147,16 +158,41 @@
 
     private async Task ExportPdf()
     {
-        var data = await DbService.GetEntriesAsync();
-        // Generate
-        var pdfBytes = PdfService.GeneratePdf(data);
+        var start = (exportRange.Start ?? DateTime.MinValue).Date;
+        var end = (exportRange.End ?? DateTime.Today).Date;
 
-        // Save
-        string fileName = $"Journal_Export_{DateTime.Now:yyyyMMdd}.pdf";
-        string filePath = Path.Combine(FileSystem.AppDataDirectory, fileName);
+        // Don't allow exporting future days
+        if (end > DateTime.Today) end = DateTime.Today;
+
+        // Export only entries within the selected range AND matching the search filter
+        var entriesToExport = allEntries
+            .Where(e => e.Date.Date >= start && e.Date.Date <= end)
+            .Where(e => FilterFunc(e))
+            .ToList();
+
+        if (entriesToExport.Count == 0)
+        {
+            await App.Current.MainPage.DisplayAlert("Export", "No entries in the selected range.", "OK");
+            return;
+        }
+
+        var pdfBytes = PdfService.GeneratePdf(entriesToExport);
+
+        string docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        string fileName = $"Journal_Export_{start:yyyyMMdd}_to_{end:yyyyMMdd}.pdf";
+        string filePath = Path.Combine(docsFolder, fileName);
 
         File.WriteAllBytes(filePath, pdfBytes);
 
-        await App.Current.MainPage.DisplayAlert("Export Success", $"PDF saved to:\n{filePath}", "OK");
+        bool open = await App.Current.MainPage.DisplayAlert("Success",
+            $"PDF saved to Documents folder.\n\nOpen it now?", "Yes", "No");
+
+        if (open)
+        {
+            await Launcher.OpenAsync(new OpenFileRequest
+            {
+                File = new ReadOnlyFile(filePath)
+            });
+        }
     }
 }
